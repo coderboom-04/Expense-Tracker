@@ -264,15 +264,15 @@
         <div class="balance-section">
             <div class="balance-card total">
                 <h3>Total Balance</h3>
-                <div class="amount" id="totalBalance">₹10000</div>
+                <div class="amount" id="totalBalance">$0.00</div>
             </div>
             <div class="balance-card income">
                 <h3>Total Income</h3>
-                <div class="amount" id="totalIncome">₹0.00</div>
+                <div class="amount" id="totalIncome">$0.00</div>
             </div>
             <div class="balance-card expense">
                 <h3>Total Expenses</h3>
-                <div class="amount" id="totalExpense">₹0.00</div>
+                <div class="amount" id="totalExpense">$0.00</div>
             </div>
         </div>
 
@@ -347,150 +347,153 @@
     </div>
 
     <script>
-        let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
-        let chart = null;
+    let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+    let initialBalance = 10000; // Default base balance in ₹
+    let chart = null;
 
+    document.getElementById('date').valueAsDate = new Date();
+
+    document.getElementById('transactionForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const transaction = {
+            id: Date.now(),
+            description: document.getElementById('description').value,
+            amount: parseFloat(document.getElementById('amount').value),
+            category: document.getElementById('category').value,
+            type: document.getElementById('type').value,
+            date: document.getElementById('date').value
+        };
+
+        transactions.push(transaction);
+        saveTransactions();
+        updateUI();
+        this.reset();
         document.getElementById('date').valueAsDate = new Date();
+    });
 
-        document.getElementById('transactionForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const transaction = {
-                id: Date.now(),
-                description: document.getElementById('description').value,
-                amount: parseFloat(document.getElementById('amount').value),
-                category: document.getElementById('category').value,
-                type: document.getElementById('type').value,
-                date: document.getElementById('date').value
-            };
+    document.getElementById('filterType').addEventListener('change', updateUI);
+    document.getElementById('filterCategory').addEventListener('change', updateUI);
 
-            transactions.push(transaction);
-            saveTransactions();
-            updateUI();
-            this.reset();
-            document.getElementById('date').valueAsDate = new Date();
+    function saveTransactions() {
+        localStorage.setItem('transactions', JSON.stringify(transactions));
+    }
+
+    function deleteTransaction(id) {
+        transactions = transactions.filter(t => t.id !== id);
+        saveTransactions();
+        updateUI();
+    }
+
+    function formatRupees(amount) {
+        // Adds ₹ and commas (e.g., ₹12,345.67)
+        return '₹' + amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function updateUI() {
+        const filterType = document.getElementById('filterType').value;
+        const filterCategory = document.getElementById('filterCategory').value;
+
+        let filtered = transactions.filter(t => {
+            const typeMatch = filterType === 'all' || t.type === filterType;
+            const categoryMatch = filterCategory === 'all' || t.category === filterCategory;
+            return typeMatch && categoryMatch;
         });
 
-        document.getElementById('filterType').addEventListener('change', updateUI);
-        document.getElementById('filterCategory').addEventListener('change', updateUI);
+        const income = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+        const expense = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+        const balance = initialBalance + income - expense;
 
-        function saveTransactions() {
-            localStorage.setItem('transactions', JSON.stringify(transactions));
+        document.getElementById('totalBalance').textContent = formatRupees(balance);
+        document.getElementById('totalIncome').textContent = formatRupees(income);
+        document.getElementById('totalExpense').textContent = formatRupees(expense);
+
+        const transactionsList = document.getElementById('transactionsList');
+        transactionsList.innerHTML = '';
+
+        filtered.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(transaction => {
+            const div = document.createElement('div');
+            div.className = `transaction-item ${transaction.type}`;
+            div.innerHTML = `
+                <div class="transaction-info">
+                    <div class="name">${transaction.description}</div>
+                    <span class="category">${transaction.category}</span>
+                    <span class="category">${transaction.date}</span>
+                </div>
+                <div class="transaction-amount ${transaction.type}">
+                    ${transaction.type === 'income' ? '+' : '-'}${formatRupees(transaction.amount)}
+                </div>
+                <button class="delete-btn" onclick="deleteTransaction(${transaction.id})">×</button>
+            `;
+            transactionsList.appendChild(div);
+        });
+
+        updateChart();
+    }
+
+    function updateChart() {
+        const expenses = transactions.filter(t => t.type === 'expense');
+        const categoryTotals = {};
+
+        expenses.forEach(t => {
+            categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
+        });
+
+        const ctx = document.getElementById('expenseChart').getContext('2d');
+        
+        if (chart) {
+            chart.destroy();
         }
 
-        function deleteTransaction(id) {
-            transactions = transactions.filter(t => t.id !== id);
-            saveTransactions();
-            updateUI();
-        }
-
-        function updateUI() {
-            const filterType = document.getElementById('filterType').value;
-            const filterCategory = document.getElementById('filterCategory').value;
-
-            let filtered = transactions.filter(t => {
-                const typeMatch = filterType === 'all' || t.type === filterType;
-                const categoryMatch = filterCategory === 'all' || t.category === filterCategory;
-                return typeMatch && categoryMatch;
-            });
-
-            const income = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
-            const expense = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
-            const balance = income - expense;
-
-            document.getElementById('totalBalance').textContent = `$${balance.toFixed(2)}`;
-            document.getElementById('totalIncome').textContent = `$${income.toFixed(2)}`;
-            document.getElementById('totalExpense').textContent = `$${expense.toFixed(2)}`;
-
-            const transactionsList = document.getElementById('transactionsList');
-            transactionsList.innerHTML = '';
-
-            filtered.sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(transaction => {
-                const div = document.createElement('div');
-                div.className = `transaction-item ${transaction.type}`;
-                div.innerHTML = `
-                    <div class="transaction-info">
-                        <div class="name">${transaction.description}</div>
-                        <span class="category">${transaction.category}</span>
-                        <span class="category">${transaction.date}</span>
-                    </div>
-                    <div class="transaction-amount ${transaction.type}">
-                        ${transaction.type === 'income' ? '+' : '-'}$${transaction.amount.toFixed(2)}
-                    </div>
-                    <button class="delete-btn" onclick="deleteTransaction(${transaction.id})">×</button>
-                `;
-                transactionsList.appendChild(div);
-            });
-
-            updateChart();
-        }
-
-        function updateChart() {
-            const expenses = transactions.filter(t => t.type === 'expense');
-            const categoryTotals = {};
-
-            expenses.forEach(t => {
-                categoryTotals[t.category] = (categoryTotals[t.category] || 0) + t.amount;
-            });
-
-            const ctx = document.getElementById('expenseChart').getContext('2d');
-            
-            if (chart) {
-                chart.destroy();
-            }
-
-            chart = new Chart(ctx, {
-                type: 'doughnut',
-                data: {
-                    labels: Object.keys(categoryTotals),
-                    datasets: [{
-                        data: Object.values(categoryTotals),
-                        backgroundColor: [
-                            '#ef4444',
-                            '#f59e0b',
-                            '#10b981',
-                            '#3b82f6',
-                            '#8b5cf6',
-                            '#ec4899',
-                            '#6b7280'
-                        ]
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: {
-                            position: 'bottom'
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return context.label + ': $' + context.parsed.toFixed(2);
-                                }
+        chart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(categoryTotals),
+                datasets: [{
+                    data: Object.values(categoryTotals),
+                    backgroundColor: [
+                        '#ef4444',
+                        '#f59e0b',
+                        '#10b981',
+                        '#3b82f6',
+                        '#8b5cf6',
+                        '#ec4899',
+                        '#6b7280'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.label}: ₹${context.parsed.toFixed(2)}`;
                             }
                         }
                     }
                 }
-            });
-        }
+            }
+        });
+    }
 
-        function exportToCSV() {
-            let csv = 'Date,Description,Category,Type,Amount\n';
-            
-            transactions.forEach(t => {
-                csv += `${t.date},${t.description},${t.category},${t.type},${t.amount}\n`;
-            });
+    function exportToCSV() {
+        let csv = 'Date,Description,Category,Type,Amount (₹)\n';
+        transactions.forEach(t => {
+            csv += `${t.date},${t.description},${t.category},${t.type},${t.amount}\n`;
+        });
 
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'transactions.csv';
-            a.click();
-        }
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'transactions.csv';
+        a.click();
+    }
 
-        updateUI();
-    </script>
+    updateUI();
+</script>
+
 </body>
 </html>
-
